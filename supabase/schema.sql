@@ -31,6 +31,9 @@ CREATE TABLE galleries (
     drive_folder_id VARCHAR(100) NOT NULL,
     max_selection INTEGER DEFAULT 50,
     deadline_date DATE,
+    pin_code VARCHAR(10),
+    extra_photo_price INTEGER DEFAULT 0,
+    allow_extra_selection BOOLEAN DEFAULT false,
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('draft', 'active', 'submitted')),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

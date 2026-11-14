@@ -103,12 +103,20 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="mt-6 flex items-center justify-center gap-4">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs sm:text-sm">
             <Link
               href="/dashboard"
-              className="text-xs sm:text-sm text-obsidian-muted hover:text-gold transition-colors underline underline-offset-4"
+              className="text-obsidian-muted hover:text-gold transition-colors underline underline-offset-4"
             >
-              Masuk ke Dashboard Galeri →
+              Buka Dashboard Galeri →
+            </Link>
+            <span className="text-obsidian-line">·</span>
+            <Link
+              href="/login"
+              className="text-obsidian-muted hover:text-gold transition-colors flex items-center gap-1.5"
+            >
+              <span>Masuk dengan Google</span>
+              <span>↗</span>
             </Link>
           </div>
         </div>

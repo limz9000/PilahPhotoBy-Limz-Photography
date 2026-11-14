@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { DriveParsedFile } from "@/lib/types";
+import { generateDemoPhotos } from "@/lib/drive";
 
 function NewGalleryForm() {
   const router = useRouter();
@@ -15,6 +16,8 @@ function NewGalleryForm() {
   const [driveUrl, setDriveUrl] = useState("");
   const [maxSelection, setMaxSelection] = useState<number>(50);
   const [deadlineDate, setDeadlineDate] = useState("");
+  const [extraPhotoPrice, setExtraPhotoPrice] = useState<number>(0);
+  const [pinCode, setPinCode] = useState<string>("");
 
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -31,16 +34,26 @@ function NewGalleryForm() {
     }
   }, [searchParams]);
 
-  const handleScanDrive = async (urlToScan?: string) => {
+  // Quick load demo photography set
+  const handleUseDemoPhotos = () => {
+    const demo = generateDemoPhotos();
+    setParsedFiles(demo);
+    setDriveFolderId("demo-photography-set");
+    if (!driveUrl) setDriveUrl("https://drive.google.com/drive/folders/demo-photography-sample");
+    if (!title) setTitle("Sesi Foto Pengantin (Demo)");
+    if (!clientName) setClientName("Kevin & Vira");
+    setErrorMsg("");
+  };
+
+  const handleScanDrive = async (urlToScan?: string): Promise<DriveParsedFile[]> => {
     const targetUrl = urlToScan || driveUrl;
     if (!targetUrl.trim()) {
       setErrorMsg("Masukkan tautan folder Google Drive terlebih dahulu.");
-      return;
+      return [];
     }
 
     setErrorMsg("");
     setIsScanning(true);
-    setParsedFiles([]);
 
     try {
       const res = await fetch("/api/drive/parse", {
@@ -54,10 +67,15 @@ function NewGalleryForm() {
         throw new Error(data.error || "Gagal memindai folder Google Drive.");
       }
 
-      setDriveFolderId(data.folderId);
+      setDriveFolderId(data.folderId || "folder-drive");
       setParsedFiles(data.files || []);
+      if (data.folderName && !title) {
+        setTitle(data.folderName);
+      }
+      return data.files || [];
     } catch (err: any) {
       setErrorMsg(err.message || "Gagal membaca folder Google Drive.");
+      return [];
     } finally {
       setIsScanning(false);
     }
@@ -65,18 +83,30 @@ function NewGalleryForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!title.trim() || !clientName.trim() || !driveUrl.trim()) {
-      setErrorMsg("Mohon lengkapi judul acara, nama klien, dan tautan Google Drive.");
-      return;
-    }
-
-    if (parsedFiles.length === 0) {
-      setErrorMsg("Silakan klik 'Periksa & Ambil Foto' terlebih dahulu untuk memastikan foto terbaca.");
-      return;
-    }
-
     setErrorMsg("");
+
+    if (!title.trim() || !clientName.trim()) {
+      setErrorMsg("Mohon lengkapi Judul Acara dan Nama Klien terlebih dahulu.");
+      return;
+    }
+
+    let filesToSave = parsedFiles;
+
+    // AUTO-SCAN IF USER HAS NOT CLICKED SCAN YET
+    if (filesToSave.length === 0) {
+      if (!driveUrl.trim()) {
+        setErrorMsg("Masukkan tautan Google Drive atau klik tombol 'Gunakan Foto Demo'.");
+        return;
+      }
+      setIsSaving(true);
+      filesToSave = await handleScanDrive(driveUrl);
+      if (filesToSave.length === 0) {
+        // If scan failed, stop saving and let user see the error or pick demo
+        setIsSaving(false);
+        return;
+      }
+    }
+
     setIsSaving(true);
 
     try {
@@ -84,13 +114,15 @@ function NewGalleryForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title,
-          client_name: clientName,
-          drive_folder_url: driveUrl,
+          title: title.trim(),
+          client_name: clientName.trim(),
+          drive_folder_url: driveUrl.trim() || "https://drive.google.com/drive/folders/demo",
           drive_folder_id: driveFolderId || "folder-custom",
           max_selection: Number(maxSelection) || 50,
           deadline_date: deadlineDate || null,
-          files: parsedFiles,
+          extra_photo_price: Number(extraPhotoPrice) || 0,
+          pin_code: pinCode.trim() || undefined,
+          files: filesToSave,
         }),
       });
 
@@ -238,29 +270,86 @@ function NewGalleryForm() {
                 />
               </div>
             </div>
+
+            {/* FITUR PILIHIN PRO: EKSTRA KUOTA & PIN KEAMANAN */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-obsidian-line/60">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-gold uppercase tracking-wider">
+                    Biaya per Foto Tambahan (Rp)
+                  </label>
+                  <span className="text-[10px] bg-gold/15 text-gold px-2 py-0.5 rounded-full font-bold">
+                    Fitur Cuan Studio
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  value={extraPhotoPrice}
+                  onChange={(e) => setExtraPhotoPrice(Number(e.target.value))}
+                  placeholder="Contoh: 15000 (0 = dilarang lebih)"
+                  className="w-full bg-obsidian-surface2 border border-obsidian-line rounded-xl px-4 py-3 text-sm text-obsidian-text focus:outline-none focus:border-gold transition-colors font-mono"
+                />
+                <p className="text-[11px] text-obsidian-faint mt-1">
+                  Jika diisi (misal Rp 15.000), klien boleh memilih lebih dari kuota dan sistem otomatis menghitung tagihan tambahan.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-obsidian-muted uppercase tracking-wider">
+                    PIN Keamanan Galeri (Opsional)
+                  </label>
+                  <span className="text-[10px] bg-obsidian-surface2 text-obsidian-muted px-2 py-0.5 rounded-full font-bold">
+                    Privasi
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={pinCode}
+                  onChange={(e) => setPinCode(e.target.value)}
+                  placeholder="Contoh: 1234 (Kosongkan jika publik)"
+                  className="w-full bg-obsidian-surface2 border border-obsidian-line rounded-xl px-4 py-3 text-sm text-obsidian-text focus:outline-none focus:border-gold transition-colors font-mono tracking-widest"
+                />
+                <p className="text-[11px] text-obsidian-faint mt-1">
+                  Klien wajib memasukkan PIN ini sebelum membuka foto galeri.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* PANEL GOOGLE DRIVE */}
           <div className="p-6 rounded-2xl bg-obsidian-surface border border-obsidian-line">
-            <h2 className="font-serif text-xl font-medium mb-1 text-obsidian-text">
-              2. Sumber Foto (Google Drive)
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+              <h2 className="font-serif text-xl font-medium text-obsidian-text">
+                2. Sumber Foto
+              </h2>
+              {/* SHORTCUT BUTTON: USE DEMO PHOTOS */}
+              <button
+                type="button"
+                onClick={handleUseDemoPhotos}
+                className="text-xs px-3 py-1.5 rounded-full border border-gold/40 bg-gold/10 text-gold hover:bg-gold hover:text-obsidian-bg transition-all self-start sm:self-auto flex items-center gap-1 font-semibold"
+              >
+                ⚡ Gunakan 12 Foto Contoh (Uji Coba Cepat)
+              </button>
+            </div>
             <p className="text-xs text-obsidian-muted mb-4">
               PilahFoto membaca langsung foto dari folder Google Drive Anda tanpa menyalin atau menyimpan file fisik di server web.
             </p>
 
             <div className="space-y-3">
               <label className="block text-xs font-semibold text-obsidian-muted uppercase tracking-wider">
-                Tautan Folder Google Drive Publik *
+                Tautan Folder Google Drive Publik
               </label>
 
               <div className="flex flex-col sm:flex-row gap-3">
                 <input
                   type="text"
-                  required
                   value={driveUrl}
                   onChange={(e) => setDriveUrl(e.target.value)}
-                  placeholder="https://drive.google.com/drive/folders/1abcXYZ..."
+                  placeholder="https://drive.google.com/drive/folders/..."
                   className="flex-1 bg-obsidian-surface2 border border-obsidian-line rounded-xl px-4 py-3 text-sm text-obsidian-text focus:outline-none focus:border-gold transition-colors font-mono"
                 />
                 <button
@@ -272,7 +361,7 @@ function NewGalleryForm() {
                   {isScanning ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-gold border-t-transparent rounded-full animate-spin" />
-                      Memindai...
+                      Memindai Drive...
                     </>
                   ) : (
                     "Periksa & Ambil Foto"
@@ -300,11 +389,15 @@ function NewGalleryForm() {
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    Berhasil menemukan {parsedFiles.length} foto siap pilih
+                    Berhasil memuat {parsedFiles.length} foto siap pilih
                   </span>
-                  <span className="text-[11px] text-obsidian-faint">
-                    Format: {parsedFiles[0]?.name.split(".").pop()?.toUpperCase()}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setParsedFiles([])}
+                    className="text-[11px] text-red-400 hover:underline"
+                  >
+                    Hapus / Ganti
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 max-h-52 overflow-y-auto p-2 bg-obsidian-surface2/50 rounded-xl border border-obsidian-line">
@@ -312,10 +405,18 @@ function NewGalleryForm() {
                     <div key={f.id} className="relative aspect-square rounded-lg overflow-hidden bg-obsidian-line group">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={f.thumbnailUrl}
+                        referrerPolicy="no-referrer"
+                        src={f.id && !f.id.startsWith("demo-") ? `/api/image-proxy?id=${f.id}&w=300` : f.thumbnailUrl}
                         alt={f.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                         loading="lazy"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (!target.dataset.fallback) {
+                            target.dataset.fallback = "1";
+                            target.src = `https://drive.google.com/thumbnail?id=${f.id}&sz=w300`;
+                          }
+                        }}
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-black/75 px-1 py-0.5 text-[9px] font-mono text-obsidian-text truncate text-center">
                         {f.name}
@@ -333,13 +434,27 @@ function NewGalleryForm() {
             )}
           </div>
 
+          {/* ERROR ALERT WITH HELPFUL ACTIONS */}
           {errorMsg && (
-            <div className="p-4 rounded-xl bg-red-950/40 border border-red-800/60 text-xs text-red-300">
-              {errorMsg}
+            <div className="p-4 rounded-xl bg-red-950/40 border border-red-800/60 text-xs text-red-300 space-y-2">
+              <div className="font-semibold flex items-center gap-2 text-red-200">
+                <span>⚠️</span>
+                <span>{errorMsg}</span>
+              </div>
+              <div className="pt-2 border-t border-red-800/30 flex flex-wrap items-center gap-2">
+                <span className="text-obsidian-muted">Ingin langsung mencoba galeri sekarang?</span>
+                <button
+                  type="button"
+                  onClick={handleUseDemoPhotos}
+                  className="px-3 py-1 rounded-lg bg-gold text-obsidian-bg font-bold hover:brightness-110 transition-all text-xs"
+                >
+                  Gunakan 12 Foto Contoh Sekarang
+                </button>
+              </div>
             </div>
           )}
 
-          {/* SUBMIT BUTTON */}
+          {/* SUBMIT BUTTON — ALWAYS CLICKABLE & SMART */}
           <div className="flex items-center justify-end gap-3 pt-4">
             <Link
               href="/dashboard"
@@ -349,10 +464,17 @@ function NewGalleryForm() {
             </Link>
             <button
               type="submit"
-              disabled={isSaving || parsedFiles.length === 0}
-              className="btn-gold px-8 py-3 rounded-full text-sm font-bold disabled:opacity-40"
+              disabled={isSaving}
+              className="btn-gold px-8 py-3 rounded-full text-sm font-bold shadow-xl flex items-center gap-2"
             >
-              {isSaving ? "Menyimpan Galeri..." : "Simpan & Buat Galeri Seleksi →"}
+              {isSaving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-obsidian-bg border-t-transparent rounded-full animate-spin" />
+                  <span>Memproses & Menyimpan Galeri...</span>
+                </>
+              ) : (
+                <span>Simpan & Buat Galeri Seleksi →</span>
+              )}
             </button>
           </div>
         </form>
@@ -368,4 +490,3 @@ export default function NewGalleryPage() {
     </Suspense>
   );
 }
-

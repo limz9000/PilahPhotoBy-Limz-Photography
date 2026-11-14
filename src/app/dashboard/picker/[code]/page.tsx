@@ -193,6 +193,11 @@ export default function WebPickerPage({ params }: PickerProps) {
                   {selectedPhotos.length}
                   <span className="text-sm text-obsidian-muted font-sans font-normal"> / {gallery.max_selection}</span>
                 </div>
+                {selectedPhotos.length > gallery.max_selection && (gallery.extra_photo_price || 0) > 0 && (
+                  <div className="text-[11px] font-bold text-amber-400 mt-1">
+                    +{selectedPhotos.length - gallery.max_selection} Ekstra (Rp {((selectedPhotos.length - gallery.max_selection) * (gallery.extra_photo_price || 0)).toLocaleString("id-ID")})
+                  </div>
+                )}
               </div>
             </div>
 
@@ -284,27 +289,51 @@ export default function WebPickerPage({ params }: PickerProps) {
               </div>
             </div>
 
-            {/* DAFTAR FOTO TERPILIH */}
+            {/* DAFTAR FOTO TERPILIH & INSTRUKSI RETOUCH KLIEN */}
             <div className="p-6 rounded-2xl bg-obsidian-surface border border-obsidian-line">
-              <h3 className="font-serif text-lg font-semibold mb-3">
-                Daftar File Pilihan Klien ({selectedPhotos.length} Foto)
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-serif text-lg font-semibold">
+                  Daftar File Pilihan & Catatan Retouch ({selectedPhotos.length} Foto)
+                </h3>
+              </div>
 
               {selectedPhotos.length === 0 ? (
                 <p className="text-xs text-obsidian-muted">Belum ada foto yang dipilih oleh klien.</p>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-72 overflow-y-auto p-2 bg-obsidian-surface2/40 rounded-xl border border-obsidian-line">
+                <div className="space-y-2 max-h-96 overflow-y-auto p-2 bg-obsidian-surface2/40 rounded-xl border border-obsidian-line">
                   {selectedPhotos.map((p) => (
-                    <div key={p.id} className="relative aspect-square rounded-lg overflow-hidden bg-obsidian-line group">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={p.thumbnail_url}
-                        alt={p.file_name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute inset-x-0 bottom-0 bg-black/80 px-1 py-0.5 text-[9px] font-mono text-obsidian-text truncate text-center">
-                        {p.file_name}
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-obsidian-surface border border-obsidian-line/60 hover:border-gold/40 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={p.thumbnail_url}
+                          alt={p.file_name}
+                          className="w-12 h-12 rounded object-cover shrink-0 border border-obsidian-line"
+                        />
+                        <div className="min-w-0">
+                          <span className="font-mono text-xs text-obsidian-text block font-medium truncate">
+                            {p.file_name}
+                          </span>
+                          {p.notes ? (
+                            <span className="text-xs text-emerald-300 block font-medium mt-0.5 truncate">
+                              💬 &quot;{p.notes}&quot;
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-obsidian-faint block mt-0.5">
+                              (Tidak ada catatan retouch khusus)
+                            </span>
+                          )}
+                        </div>
                       </div>
+
+                      {p.notes && (
+                        <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                          Ada Request
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

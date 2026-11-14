@@ -16,6 +16,14 @@ export interface Gallery {
   drive_folder_id: string;
   max_selection: number;
   deadline_date?: string;
+  pin_code?: string;
+  extra_photo_price?: number;
+  allow_extra_selection?: boolean;
+  client_whatsapp?: string;
+  event_date?: string;
+  allow_download?: boolean;
+  highlight_desc?: string;
+  time_limit_days?: number;
   status: 'draft' | 'active' | 'submitted';
   created_at: string;
   photo_count?: number;

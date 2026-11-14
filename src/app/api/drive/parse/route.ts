@@ -17,18 +17,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const files = await parseDriveFolder(folderId);
+    const result = await parseDriveFolder(folderUrl);
 
     return NextResponse.json({
       folderId,
-      totalFiles: files.length,
-      files,
+      folderName: result.folderName,
+      totalFiles: result.files.length,
+      files: result.files,
     });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Gagal memproses folder Google Drive." },
-      { status: 500 }
+      { status: 400 }
     );
   }
 }
-

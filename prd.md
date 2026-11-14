@@ -183,17 +183,54 @@ ZONA BAWAH: MASTER CONTEXT & LOGIKA SISTEM TERKINI (LIVING CONTEXT)
 
 ## SKEMA DATABASE AKTIF
 * `studios`: ID, Name, Slug, WhatsApp, CreatedAt.
-* `galleries`: ID, GalleryCode, StudioId, Title, ClientName, DriveFolderUrl, DriveFolderId, MaxSelection, DeadlineDate, Status, CreatedAt.
+* `galleries`: ID, GalleryCode, StudioId, Title, ClientName, DriveFolderUrl, DriveFolderId, MaxSelection, DeadlineDate, PinCode, ExtraPhotoPrice, AllowExtraSelection, Status, CreatedAt.
 * `photos`: ID, GalleryId, DriveFileId, FileName, ThumbnailUrl, Width, Height.
 * `selections`: ID, GalleryId, PhotoId, Notes, SelectedAt.
 
 ## LOGIKA BISNIS AKTIF
 * Penomoran: `GAL-YYYYMM-XXX` (Incremental per bulan).
-* Batasan Kuota: Hard-stop validation (Selection Count <= MaxSelection).
+* Autentikasi Fotografer: Mendukung Google OAuth via Supabase Auth serta sesi lokal Studio Limz Photography yang reaktif dengan avatar profil dan dropdown menu.
+* Batasan Kuota & Ekstra Kuota: Jika `extra_photo_price > 0`, sistem mengizinkan pemilihan melebihi kuota paket dasar dengan penghitungan tagihan otomatis (`extraCount * extra_photo_price`).
+* Keamanan PIN: Galeri dengan `pin_code` mewajibkan otentikasi PIN di browser klien sebelum foto dapat diakses.
+* Catatan Retouch: Klien dapat menambahkan catatan instruksi khusus per foto yang disimpan ke database dan diteruskan ke rekap WhatsApp serta tabel Web Picker.
+* Ekspor Media: Story 9:16 (1080x1920) dirender langsung via HTML5 Canvas; Unduh arsip ZIP seluruh foto pilihan via JSZip di browser klien.
+* Generator QR Code: QR Code resolusi tinggi untuk dicetak di meja acara atau dibagikan ke tamu via modal pop-up.
 * Siklus Status Galeri: `active` -> `submitted` (Read-only lock).
 * Pengalihan WhatsApp: `https://api.whatsapp.com/send?phone={NO_WA}&text={REKAP_TEXT}`.
 
 ## LOG PEMBARUAN RESMI
+* **v2.2.0 (Google OAuth Authentication & Full Photographer Dashboard per Pilihin.app):**
+  - [x] **Autentikasi Akun Google (`src/lib/auth.ts`):** Integrasi Google OAuth via Supabase dengan fallback cerdas sesi studio lokal.
+  - [x] **Halaman Khusus Login Fotografer (`src/app/login/page.tsx`):** Desain mewah Obsidian & Gold dengan tombol resmi Google Sign-In dan indikator keamanan.
+  - [x] **Navbar Reaktif (`src/components/Navbar.tsx`):** Menampilkan tombol "Masuk dengan Google" bagi tamu, serta avatar foto profil Google dan dropdown menu studio bagi fotografer yang login.
+  - [x] **Dashboard Fotografer Terintegrasi Penuh (`src/app/dashboard/page.tsx`):**
+    * Sub-navigasi studio: Galeri, Portofolio Studio, Web Picker RAW, Sortir Otomatis.
+    * Bilah cepat alat studio: Web Picker RAW, Studio Job & POS, Domain Portofolio Limz, Kamera Tamu Live QR.
+    * Formulir tersemat "Buat Galeri Baru" langsung di dashboard dengan auto-scan preview Google Drive, dropdown batas waktu (7/14/30 hari), tanggal acara, WhatsApp klien, izin download, dan kuota foto.
+    * Kartu galeri dinamis dengan progres bar, tombol WhatsApp 1-klik, dan modal pop-up QR Code interaktif.
+    * 4 Tombol aksi kreatif di tiap kartu galeri: Bikin Wedding Book, Konten Story 9:16, Konten Reels, dan Web Picker RAW.
+  - [x] **Hub Web Picker RAW (`src/app/dashboard/picker/page.tsx`):** Antarmuka pemilihan galeri untuk sinkronisasi file RAW kamera asli ke laptop fotografer.
+  - [x] Verifikasi mandiri: Production build `next build` 100% sukses tanpa error (11/11 routes).
+* **v2.1.0 (Zero Broken Images, Dedicated Memories Album, & Fullscreen Slider Navigation):**
+  - [x] **Zero Broken Image Engine:** Penyempurnaan `/api/image-proxy` dengan 4-tier engine fallback dan server-side in-memory cache, serta perbaikan render thumbnail di `/dashboard/new`.
+  - [x] **Halaman Dedicated Mode Kenangan (`/memories/[code]`):** Halaman album kenangan fullscreen 100vh ala `pilihin.app/demo-memories` dengan cover dramatis romantis, tipografi serif mewah, smooth-scroll, dan toolbar eksklusif keluarga/tamu.
+  - [x] **Fullscreen Lightbox Slider Navigation:** Penambahan tombol geser melayang `◀` dan `▶`, touch swipe layar sentuh HP, keyboard arrow (`←` / `→`), nomor urut foto, dan aksi pilih/catatan langsung dari dalam modal zoom tanpa perlu bolak-balik keluar.
+  - [x] **Integrasi Dashboard Studio:** Tombol shortcut `✨ Mode Kenangan ↗` pada daftar galeri studio untuk membagikan tautan album ke pengantin & keluarga.
+  - [x] Verifikasi mandiri: Production build `next build` 100% sukses tanpa error.
+* **v2.0.0 (Adopsi Penuh 6 Fitur Unggulan Pilihin.app):**
+  - [x] **Catatan Retouch per Foto (Photo Notes):** Klien bisa menulis permintaan edit khusus per foto; tersimpan di DB, tampil di Web Picker, dan masuk ke Rekap WhatsApp.
+  - [x] **Ekstra Kuota Berbayar (Upsell):** Input biaya per foto ekstra di `/dashboard/new`, kalkulator biaya real-time di floating bar, dan rincian tagihan di WhatsApp.
+  - [x] **PIN 4-Digit Pengaman Galeri:** Proteksi akses galeri privat dengan layar input PIN eksklusif.
+  - [x] **Pembuat Konten Story 9:16:** Generator kanvas HTML5 rasio 9:16 dengan layout elegan Limz Photography siap posting ke Instagram/WhatsApp Story.
+  - [x] **Mode Album Kenangan:** Tab navigasi editorial bergaya majalah pernikahan digital (*magazine spreads*).
+  - [x] **Download ZIP Foto Terpilih:** Fitur ekspor 1-klik seluruh foto pilihan menjadi file `.zip` via JSZip.
+  - [x] Verifikasi mandiri: Production build lolos 100% tanpa error (`next build` 9/9 routes).
+* **v1.1.0 (Peningkatan UX Tombol Seleksi "Pilih" & "Batal Pilih"):**
+  - [x] Kartu Foto Grid: Mengganti simbol `+` kecil menjadi badge pill jelas bertuliskan `+ Pilih` dan `✓ Terpilih` di pojok atas foto.
+  - [x] Metadata Bar: Menambahkan tombol aksi langsung `Pilih` / `Batal Pilih` di bilah info bawah kartu foto.
+  - [x] Mode Swipe: Menyematkan label teks eksplisit `+ Pilih Foto` (emas/merah toggle) dan `✕ Lewati`.
+  - [x] Modal Layar Penuh (Zoom): Tombol toggle jelas `+ Pilih Foto Ini` vs `✕ Batal Pilih Foto Ini` dengan warna pembeda.
+  - [x] Verifikasi mandiri: Production build `next build` 100% sukses tanpa error (9/9 routes).
 * **v1.0.0 (Implementasi Penuh Selesai):**
   - [x] Inisialisasi Next.js 15 App Router + Tailwind CSS + TypeScript.
   - [x] Integrasi Google Drive Zero-Upload (`/api/drive/parse` & `src/lib/drive.ts`).

@@ -19,7 +19,7 @@ function getInitialDB(): LocalDatabase {
       id: "studio-limz-1",
       name: process.env.NEXT_PUBLIC_STUDIO_NAME || "Limz Photography",
       slug: "limz-photography",
-      whatsapp: process.env.NEXT_PUBLIC_STUDIO_WHATSAPP || "6281234567890",
+      whatsapp: process.env.NEXT_PUBLIC_STUDIO_WHATSAPP || "6281352869000",
       created_at: new Date().toISOString(),
     },
     galleries: [],
@@ -99,7 +99,11 @@ export async function getStudioProfile(): Promise<Studio> {
     const { data } = await supabase.from("studios").select("*").limit(1).single();
     if (data) return data;
   }
-  return readLocalDB().studio;
+  const db = readLocalDB();
+  if (process.env.NEXT_PUBLIC_STUDIO_WHATSAPP) {
+    db.studio.whatsapp = process.env.NEXT_PUBLIC_STUDIO_WHATSAPP;
+  }
+  return db.studio;
 }
 
 export async function listGalleries(): Promise<Gallery[]> {
@@ -156,16 +160,18 @@ export async function getGalleryByCode(code: string): Promise<{
 
     const { data: selections } = await supabase
       .from("selections")
-      .select("photo_id")
+      .select("photo_id, notes")
       .eq("gallery_id", gallery.id);
 
     const selectedIds = (selections || []).map((s: any) => s.photo_id);
+    const noteMap = new Map((selections || []).map((s: any) => [s.photo_id, s.notes || ""]));
 
     return {
       gallery,
       photos: (photos || []).map((p: any) => ({
         ...p,
         is_selected: selectedIds.includes(p.id),
+        notes: noteMap.get(p.id) || "",
       })),
       selectedPhotoIds: selectedIds,
     };
@@ -176,15 +182,16 @@ export async function getGalleryByCode(code: string): Promise<{
   if (!gallery) return null;
 
   const photos = db.photos.filter((p) => p.gallery_id === gallery.id);
-  const selectedIds = db.selections
-    .filter((s) => s.gallery_id === gallery.id)
-    .map((s) => s.photo_id);
+  const selections = db.selections.filter((s) => s.gallery_id === gallery.id);
+  const selectedIds = selections.map((s) => s.photo_id);
+  const noteMap = new Map(selections.map((s) => [s.photo_id, s.notes || ""]));
 
   return {
     gallery,
     photos: photos.map((p) => ({
       ...p,
       is_selected: selectedIds.includes(p.id),
+      notes: noteMap.get(p.id) || "",
     })),
     selectedPhotoIds: selectedIds,
   };
@@ -197,6 +204,14 @@ export async function createGallery(payload: {
   drive_folder_id: string;
   max_selection: number;
   deadline_date?: string;
+  pin_code?: string;
+  extra_photo_price?: number;
+  allow_extra_selection?: boolean;
+  client_whatsapp?: string;
+  event_date?: string;
+  allow_download?: boolean;
+  highlight_desc?: string;
+  time_limit_days?: number;
   files: { id: string; name: string; thumbnailUrl: string; width?: number; height?: number }[];
 }): Promise<Gallery> {
   const code = await getNextGalleryCode();
@@ -214,6 +229,14 @@ export async function createGallery(payload: {
         drive_folder_id: payload.drive_folder_id,
         max_selection: payload.max_selection,
         deadline_date: payload.deadline_date || null,
+        pin_code: payload.pin_code || null,
+        extra_photo_price: payload.extra_photo_price || 0,
+        allow_extra_selection: payload.allow_extra_selection || (payload.extra_photo_price ? payload.extra_photo_price > 0 : false),
+        client_whatsapp: payload.client_whatsapp || null,
+        event_date: payload.event_date || null,
+        allow_download: payload.allow_download ?? true,
+        highlight_desc: payload.highlight_desc || null,
+        time_limit_days: payload.time_limit_days || 30,
         status: "active",
       })
       .select()
@@ -246,6 +269,14 @@ export async function createGallery(payload: {
     drive_folder_id: payload.drive_folder_id,
     max_selection: payload.max_selection,
     deadline_date: payload.deadline_date,
+    pin_code: payload.pin_code,
+    extra_photo_price: payload.extra_photo_price || 0,
+    allow_extra_selection: payload.allow_extra_selection || (payload.extra_photo_price ? payload.extra_photo_price > 0 : false),
+    client_whatsapp: payload.client_whatsapp,
+    event_date: payload.event_date,
+    allow_download: payload.allow_download ?? true,
+    highlight_desc: payload.highlight_desc,
+    time_limit_days: payload.time_limit_days,
     status: "active",
     created_at: new Date().toISOString(),
   };
@@ -267,6 +298,33 @@ export async function createGallery(payload: {
   return newGallery;
 }
 
+export async function deleteGallery(galleryId: string): Promise<boolean> {
+  if (isSupabaseConfigured && supabase) {
+    await supabase.from("galleries").delete().eq("id", galleryId);
+    return true;
+  }
+  const db = readLocalDB();
+  db.galleries = db.galleries.filter((g) => g.id !== galleryId);
+  db.photos = db.photos.filter((p) => p.gallery_id !== galleryId);
+  db.selections = db.selections.filter((s) => s.gallery_id !== galleryId);
+  writeLocalDB(db);
+  return true;
+}
+
+export async function unlockGallery(galleryId: string): Promise<boolean> {
+  if (isSupabaseConfigured && supabase) {
+    await supabase.from("galleries").update({ status: "active" }).eq("id", galleryId);
+    return true;
+  }
+  const db = readLocalDB();
+  const g = db.galleries.find((item) => item.id === galleryId);
+  if (g) {
+    g.status = "active";
+    writeLocalDB(db);
+  }
+  return true;
+}
+
 export async function togglePhotoSelection(
   galleryId: string,
   photoId: string
@@ -274,7 +332,7 @@ export async function togglePhotoSelection(
   if (isSupabaseConfigured && supabase) {
     const { data: gallery } = await supabase
       .from("galleries")
-      .select("status, max_selection")
+      .select("status, max_selection, extra_photo_price, allow_extra_selection")
       .eq("id", galleryId)
       .single();
 
@@ -298,13 +356,14 @@ export async function togglePhotoSelection(
       return { selected: false, totalSelected: count || 0, maxSelection: gallery.max_selection };
     }
 
-    // Check strict quota
+    // Check quota
     const { count } = await supabase
       .from("selections")
       .select("*", { count: "exact", head: true })
       .eq("gallery_id", galleryId);
 
-    if ((count || 0) >= gallery.max_selection) {
+    const allowExtra = gallery.allow_extra_selection || (gallery.extra_photo_price && gallery.extra_photo_price > 0);
+    if (!allowExtra && (count || 0) >= gallery.max_selection) {
       throw new Error(`Batas maksimal pilihan (${gallery.max_selection} foto) sudah tercapai.`);
     }
 
@@ -334,7 +393,8 @@ export async function togglePhotoSelection(
     return { selected: false, totalSelected: currentCount - 1, maxSelection: gallery.max_selection };
   }
 
-  if (currentCount >= gallery.max_selection) {
+  const allowExtra = gallery.allow_extra_selection || (gallery.extra_photo_price && gallery.extra_photo_price > 0);
+  if (!allowExtra && currentCount >= gallery.max_selection) {
     throw new Error(`Batas maksimal pilihan (${gallery.max_selection} foto) sudah tercapai.`);
   }
 
@@ -347,6 +407,33 @@ export async function togglePhotoSelection(
   writeLocalDB(db);
 
   return { selected: true, totalSelected: currentCount + 1, maxSelection: gallery.max_selection };
+}
+
+export async function updatePhotoNote(
+  galleryId: string,
+  photoId: string,
+  notes: string
+): Promise<{ success: boolean; notes: string }> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase
+      .from("selections")
+      .update({ notes })
+      .eq("gallery_id", galleryId)
+      .eq("photo_id", photoId);
+
+    if (error) throw new Error(error.message);
+    return { success: true, notes };
+  }
+
+  const db = readLocalDB();
+  const selection = db.selections.find(
+    (s) => s.gallery_id === galleryId && s.photo_id === photoId
+  );
+  if (selection) {
+    selection.notes = notes;
+    writeLocalDB(db);
+  }
+  return { success: true, notes };
 }
 
 export async function submitGallerySelections(galleryId: string): Promise<{ success: boolean }> {
@@ -363,4 +450,3 @@ export async function submitGallerySelections(galleryId: string): Promise<{ succ
   }
   return { success: true };
 }
-
